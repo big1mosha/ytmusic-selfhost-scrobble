@@ -49,9 +49,13 @@ token=your-koito-api-key
 Push it with adb:
 
 ```sh
-adb shell mkdir -p /sdcard/Android/data/com.google.android.apps.youtube.music/files
-adb push scrobble.conf /sdcard/Android/data/com.google.android.apps.youtube.music/files/scrobble.conf
+adb shell mkdir -p /sdcard/Android/data/app.morphe.android.apps.youtube.music/files
+adb push scrobble.conf /sdcard/Android/data/app.morphe.android.apps.youtube.music/files/scrobble.conf
 ```
+
+Morphe renames the patched app to `app.morphe.android.apps.youtube.music`, so that is the
+directory to use, not `com.google.android.apps.youtube.music`. The extension resolves it from
+its own package automatically, so only the adb path above depends on the name.
 
 For Maloja the URL is usually `http://<host>:42010/apis/listenbrainz`.
 The token is the API key from your server's settings page (Koito: **Settings → API Keys**).
@@ -90,13 +94,30 @@ The patch bundle is written to `patches/build/libs/patches-*.mpp`.
 
 ## Install
 
-1. Add this repository as a patch source in Morphe Manager, or load the built `.mpp`
-   file with [Morphe Desktop](https://github.com/MorpheApp/morphe-desktop).
-2. Select **Self-hosted scrobbling** and patch YouTube Music.
-3. Install the patched app, configure the server as described above, and play a track.
-4. Check `adb logcat -s SelfHostScrobble` if nothing shows up.
+1. Push this repository to GitHub. The release workflow builds and publishes the `.mpp` and
+   fills `patches-bundle.json`, which is what Morphe Manager reads.
+2. In Morphe Manager open **Sources → + → Remote** and add
+   `github.com/<your-user>/ytmusic-selfhost-scrobble`.
+3. Turn on **Expert mode** (Settings → Patching). Simple mode only allows one source per app.
+4. Open YouTube Music, pick the APK version, then:
+   - in the **Morphe Patches** tab tap **Enable recommended patches**,
+   - in this source's tab enable **Self-hosted scrobbling**,
+   - tap **Patch** and accept the multiple-sources warning.
+5. Do **not** enable the official **Scrobbling** patch at the same time.
+6. Install the patched app, configure the server as described above, and play a track.
+7. Check `adb logcat -s SelfHostScrobble` if nothing shows up.
 
-## Releasing (optional)
+To build without GitHub Actions, see [Build](#build) and add the `.mpp` as a **Local** source
+instead.
+
+### Updates
+
+Any patch update or YouTube Music update means patching again: tap the update mark on the app
+card, **Patch**, then install over the existing app. The same Morphe keystore means Android
+treats it as an update, so app data and `scrobble.conf` survive. They are lost only if Morphe's
+keystore changes and the app has to be uninstalled first.
+
+## Releasing
 
 The repository is set up with the Morphe patches template. Semantic-release builds and
 publishes a signed `.mpp` when a `feat:`/`fix:` commit lands on `main` or `dev`.

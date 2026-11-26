@@ -20,8 +20,7 @@ internal object Constants {
             // Fingerprints are stable enough that any version is worth trying.
             AppTarget(
                 version = null,
-                minSdk = 26,
-                isExperimental = true
+                minSdk = 26
             )
         )
     )
