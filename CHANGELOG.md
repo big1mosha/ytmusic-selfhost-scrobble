@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/big1mosha/ytmusic-selfhost-scrobble/compare/v1.0.0...v1.0.1) (2026-11-28)
+
+### 🐛 Bug Fixes
+
+* send now playing off the main thread and stop album metadata leaking between tracks ([96ebf93](https://github.com/big1mosha/ytmusic-selfhost-scrobble/commit/96ebf93f3076ffd262162e37cd3613f79f844467))
+
 ## 1.0.0 (2026-11-26)
 
 ### ✨ New Features
