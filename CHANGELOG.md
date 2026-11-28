@@ -1,3 +1,9 @@
+## [1.1.1](https://github.com/big1mosha/ytmusic-selfhost-scrobble/compare/v1.1.0...v1.1.1) (2026-11-28)
+
+### 🐛 Bug Fixes
+
+* resolve the settings intent and scrobble at 85% of the track ([a53bee0](https://github.com/big1mosha/ytmusic-selfhost-scrobble/commit/a53bee0fb4ec7ea8993aa7d68536a92246ceaf7e))
+
 ## [1.1.0](https://github.com/big1mosha/ytmusic-selfhost-scrobble/compare/v1.0.1...v1.1.0) (2026-11-28)
 
 ### ✨ New Features
