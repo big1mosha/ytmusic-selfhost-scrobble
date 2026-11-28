@@ -15,13 +15,24 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Talks to a ListenBrainz-compatible server: Koito, Maloja, or listenbrainz.org.
+ *
+ * <p>Every call returns immediately and runs the request on a single background
+ * thread, so callers never touch the network on the main thread.
  */
 final class ListenBrainzClient {
     private static final String TAG = "SelfHostScrobble";
     private static final String USER_AGENT = "SelfHostScrobble/1.0";
+
+    private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "SelfHostScrobble");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private ListenBrainzClient() {
     }
@@ -75,6 +86,11 @@ final class ListenBrainzClient {
 
     static void scrobble(String artist, String track, String album, String songId,
                          int duration, long timestamp) {
+        EXECUTOR.submit(() -> submitListen(artist, track, album, songId, duration, timestamp));
+    }
+
+    private static void submitListen(String artist, String track, String album, String songId,
+                                     int duration, long timestamp) {
         String url = endpoint("submit-listens");
         if (url == null) {
             Log.w(TAG, "Server URL is not set, skipping scrobble");
@@ -101,6 +117,11 @@ final class ListenBrainzClient {
     }
 
     static void nowPlaying(String artist, String track, String album, String songId, int duration) {
+        EXECUTOR.submit(() -> submitNowPlaying(artist, track, album, songId, duration));
+    }
+
+    private static void submitNowPlaying(String artist, String track, String album, String songId,
+                                         int duration) {
         String url = endpoint("submit-listens");
         if (url == null) {
             Log.w(TAG, "Server URL is not set, skipping now playing");

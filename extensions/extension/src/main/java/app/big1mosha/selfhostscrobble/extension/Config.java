@@ -55,6 +55,9 @@ public final class Config {
     /** Never wait longer than this before scrobbling. */
     public static final int DELAY_SECONDS = 180;
 
+    /** The same track is not scrobbled twice within this many seconds. */
+    public static final int DEDUPE_SECONDS = 300;
+
     /** Remove "Official Video", "Remaster", "Live" and similar clutter from metadata. */
     public static final boolean CLEAN_METADATA = true;
 

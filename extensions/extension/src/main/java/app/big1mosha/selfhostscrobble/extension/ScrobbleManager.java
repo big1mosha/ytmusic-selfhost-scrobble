@@ -13,13 +13,11 @@ import android.os.Looper;
 import android.util.Log;
 import android.util.Pair;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
 /**
  * Watches the media session and reports tracks to the configured server.
  *
- * <p>All methods must be called on the main thread.
+ * <p>All methods must be called on the main thread. Network work is handed to
+ * {@link ListenBrainzClient}, which runs it on its own worker thread.
  */
 final class ScrobbleManager {
     private static final String TAG = "SelfHostScrobble";
@@ -33,16 +31,45 @@ final class ScrobbleManager {
         return instance;
     }
 
+    /**
+     * The track that is currently playing.
+     *
+     * <p>Metadata of the next track can never reach a scrobble that was scheduled
+     * for this one, because the scrobble reads this snapshot instead of the live
+     * player state.
+     */
+    private static final class Track {
+        final String title;
+        final String artist;
+        final String key;
+
+        String mediaId;
+        String album;
+        int durationSeconds;
+        long startedAtSeconds;
+
+        Track(String mediaId, String title, String artist, String album, int durationSeconds) {
+            this.mediaId = mediaId == null ? "" : mediaId.trim();
+            this.title = title;
+            this.artist = artist;
+            this.album = isEmpty(album) ? null : album;
+            this.durationSeconds = durationSeconds;
+            this.key = this.mediaId.isEmpty() ? title + '\u0000' + artist : "id:" + this.mediaId;
+        }
+
+        /** Same song, unless both sides carry a media id and the ids differ. */
+        boolean isSameTrack(Track other) {
+            if (!title.equals(other.title) || !artist.equals(other.artist)) {
+                return false;
+            }
+            return mediaId.isEmpty() || other.mediaId.isEmpty() || mediaId.equals(other.mediaId);
+        }
+    }
+
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    private String currentTitle;
-    private String currentArtist;
-    private String currentAlbum;
-    private String currentSongId;
-    private int currentDurationSeconds;
+    private Track current;
 
-    private long songStartedAtSeconds;
     private boolean songStarted;
     private boolean isPlayerPlaying;
 
@@ -50,6 +77,9 @@ final class ScrobbleManager {
     private long scrobbleTimerStartedAt;
     private boolean scrobbled;
     private Runnable scrobbleRunnable;
+
+    private String lastScrobbledKey;
+    private long lastScrobbledAt;
 
     private ScrobbleManager() {
     }
@@ -60,7 +90,7 @@ final class ScrobbleManager {
         }
 
         try {
-            String songId = metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID);
+            String mediaId = metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID);
             String album = cleanAlbum(metadata.getString(MediaMetadata.METADATA_KEY_ALBUM));
             String rawTitle = metadata.getString(MediaMetadata.METADATA_KEY_TITLE);
             String rawArtist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
@@ -70,54 +100,51 @@ final class ScrobbleManager {
             String artist = resolved.second;
             int duration = (int) (metadata.getLong(MediaMetadata.METADATA_KEY_DURATION) / 1000);
 
-            if (title == null || title.trim().isEmpty() || artist == null || artist.trim().isEmpty()) {
+            if (isEmpty(title) || isEmpty(artist)) {
                 return;
             }
 
-            if (!title.equals(currentTitle) || !artist.equals(currentArtist)) {
-                Log.d(TAG, "New track: " + title + " - " + artist);
+            Track candidate = new Track(mediaId, title, artist, album, duration);
+
+            if (current == null || !current.isSameTrack(candidate)) {
+                Log.d(TAG, "New track: " + title + " - " + artist
+                        + " [album=" + album + ", id=" + mediaId + "]");
                 stopTimer();
                 songStarted = false;
                 scrobbled = false;
-
-                currentTitle = title;
-                currentArtist = artist;
-                currentAlbum = album;
-                currentSongId = songId;
-                currentDurationSeconds = duration;
+                current = candidate;
 
                 if (isPlayerPlaying) {
                     onSongStart();
                 }
-            } else {
-                boolean updated = false;
+                return;
+            }
 
-                if (duration > currentDurationSeconds) {
-                    currentDurationSeconds = duration;
-                    updated = true;
-                }
-                if (album != null && !album.trim().isEmpty()
-                        && (currentAlbum == null || currentAlbum.trim().isEmpty())) {
-                    currentAlbum = album;
-                    updated = true;
-                }
-                if (songId != null && !songId.trim().isEmpty()
-                        && (currentSongId == null || currentSongId.trim().isEmpty())) {
-                    currentSongId = songId;
-                    updated = true;
-                }
+            boolean updated = false;
 
-                if (updated && songStarted && isPlayerPlaying) {
-                    // Metadata arrived after playback started, so the timer may have been skipped.
-                    if (!scrobbled && scrobbleRunnable == null && scrobbleTimerStartedAt == 0L) {
-                        startTimer();
-                    }
-                    if (Config.NOW_PLAYING) {
-                        ListenBrainzClient.nowPlaying(
-                                currentArtist, currentTitle, currentAlbum,
-                                currentSongId, currentDurationSeconds
-                        );
-                    }
+            if (candidate.durationSeconds > current.durationSeconds) {
+                current.durationSeconds = candidate.durationSeconds;
+                updated = true;
+            }
+            if (current.mediaId.isEmpty() && !candidate.mediaId.isEmpty()) {
+                current.mediaId = candidate.mediaId;
+                updated = true;
+            }
+            // Only fill a missing album. Never replace one, so a late update for
+            // another track cannot relabel this one.
+            if (current.album == null && candidate.album != null) {
+                current.album = candidate.album;
+                updated = true;
+                Log.d(TAG, "Album for '" + current.title + "': " + current.album);
+            }
+
+            if (updated && songStarted && isPlayerPlaying) {
+                // Metadata arrived after playback started, so the timer may have been skipped.
+                if (!scrobbled && scrobbleRunnable == null && scrobbleTimerStartedAt == 0L) {
+                    startTimer();
+                }
+                if (Config.NOW_PLAYING) {
+                    nowPlaying();
                 }
             }
         } catch (Throwable t) {
@@ -132,7 +159,7 @@ final class ScrobbleManager {
 
         isPlayerPlaying = state.getState() == PlaybackState.STATE_PLAYING;
 
-        if (currentTitle == null || currentArtist == null) {
+        if (current == null) {
             return;
         }
 
@@ -148,16 +175,17 @@ final class ScrobbleManager {
     }
 
     private void onSongStart() {
-        songStartedAtSeconds = System.currentTimeMillis() / 1000;
+        if (current == null) {
+            return;
+        }
+
+        current.startedAtSeconds = System.currentTimeMillis() / 1000;
         songStarted = true;
 
         startTimer();
 
         if (Config.NOW_PLAYING) {
-            ListenBrainzClient.nowPlaying(
-                    currentArtist, currentTitle, currentAlbum,
-                    currentSongId, currentDurationSeconds
-            );
+            nowPlaying();
         }
     }
 
@@ -185,22 +213,27 @@ final class ScrobbleManager {
     private void startTimer() {
         cancelRunnable();
 
-        if (currentDurationSeconds <= Config.MIN_SONG_DURATION_SECONDS) {
-            Log.d(TAG, "Skipping short track (" + currentDurationSeconds + "s)");
+        Track track = current;
+        if (track == null) {
             return;
         }
 
-        long thresholdMillis = (long) (currentDurationSeconds * 1000L * (Config.DELAY_PERCENT / 100.0f));
+        if (track.durationSeconds <= Config.MIN_SONG_DURATION_SECONDS) {
+            Log.d(TAG, "Skipping short track (" + track.durationSeconds + "s)");
+            return;
+        }
+
+        long thresholdMillis = (long) (track.durationSeconds * 1000L * (Config.DELAY_PERCENT / 100.0f));
         long totalDelayMillis = Math.min(thresholdMillis, Config.DELAY_SECONDS * 1000L);
         long elapsedMillis = Math.max(
                 0,
-                System.currentTimeMillis() - (songStartedAtSeconds * 1000L)
+                System.currentTimeMillis() - (track.startedAtSeconds * 1000L)
         );
 
         scrobbleRemainingMillis = totalDelayMillis - elapsedMillis;
 
         if (scrobbleRemainingMillis <= 0) {
-            scrobble();
+            scrobble(track);
             return;
         }
 
@@ -219,8 +252,9 @@ final class ScrobbleManager {
     }
 
     private void scheduleScrobble(long delayMillis) {
+        final Track track = current;
         scrobbleRunnable = () -> {
-            scrobble();
+            scrobble(track);
             scrobbleRunnable = null;
         };
         handler.postDelayed(scrobbleRunnable, delayMillis);
@@ -233,22 +267,38 @@ final class ScrobbleManager {
         }
     }
 
-    private void scrobble() {
-        if (scrobbled) {
+    private void nowPlaying() {
+        Track track = current;
+        if (track == null) {
+            return;
+        }
+
+        ListenBrainzClient.nowPlaying(
+                track.artist, track.title, track.album, track.mediaId, track.durationSeconds
+        );
+    }
+
+    private void scrobble(Track track) {
+        if (scrobbled || track == null || track != current) {
             return;
         }
         scrobbled = true;
 
-        final String artist = currentArtist;
-        final String title = currentTitle;
-        final String album = currentAlbum;
-        final String songId = currentSongId;
-        final int duration = currentDurationSeconds;
-        final long timestamp = songStartedAtSeconds;
+        long now = System.currentTimeMillis();
+        if (track.key.equals(lastScrobbledKey)
+                && now - lastScrobbledAt < Config.DEDUPE_SECONDS * 1000L) {
+            Log.d(TAG, "Skipping duplicate scrobble of '" + track.title + "'");
+            return;
+        }
+        lastScrobbledKey = track.key;
+        lastScrobbledAt = now;
 
-        executor.submit(() -> ListenBrainzClient.scrobble(
-                artist, title, album, songId, duration, timestamp
-        ));
+        Log.d(TAG, "Scrobbling '" + track.title + "' by " + track.artist
+                + " [album=" + track.album + ", id=" + track.mediaId + "]");
+        ListenBrainzClient.scrobble(
+                track.artist, track.title, track.album, track.mediaId,
+                track.durationSeconds, track.startedAtSeconds
+        );
     }
 
     private String cleanTitle(String title) {
@@ -303,7 +353,7 @@ final class ScrobbleManager {
             if (separatorIndex > 0 && separatorIndex < rawTitle.length() - separator.length()) {
                 String parsedArtist = cleanArtist(rawTitle.substring(0, separatorIndex).trim());
                 String parsedTrack = cleanTitle(rawTitle.substring(separatorIndex + separator.length()).trim());
-                if (!parsedArtist.isEmpty() && !parsedTrack.isEmpty()) {
+                if (!isEmpty(parsedArtist) && !isEmpty(parsedTrack)) {
                     title = parsedTrack;
                     artist = parsedArtist;
                 }
@@ -315,7 +365,7 @@ final class ScrobbleManager {
 
     private String applyCustomRegex(String input) {
         String regex = Config.CUSTOM_REGEX;
-        if (regex.trim().isEmpty()) {
+        if (isEmpty(regex)) {
             return input;
         }
 
@@ -325,5 +375,9 @@ final class ScrobbleManager {
             Log.w(TAG, "Invalid custom regex: " + regex, ex);
             return input;
         }
+    }
+
+    private static boolean isEmpty(String value) {
+        return value == null || value.trim().isEmpty();
     }
 }

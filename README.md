@@ -26,6 +26,8 @@ Works with any server that implements the ListenBrainz API:
 - Cleans up metadata (`Official Video`, `Remaster`, `Live`, channel `- Topic`, …).
 - Waits until 50% of the track (max 180s) before scrobbling, and skips tracks shorter
   than 30 seconds.
+- Keeps one snapshot per track, so the next song's album or art cannot land on the
+  current scrobble, and ignores a repeat scrobble of the same track within 5 minutes.
 - Allows plain `http://` traffic, because self-hosted servers are usually reached over
   LAN without TLS.
 
@@ -72,7 +74,7 @@ Edit `DEFAULT_SERVER_URL` and `DEFAULT_TOKEN` in `Config.java` and rebuild.
 > Do not commit a real token to a public repository.
 
 Other toggles in `Config.java`: now playing, minimum duration, delay percent/seconds,
-metadata cleanup, custom regex, parse `Artist - Track` from the title.
+duplicate window, metadata cleanup, custom regex, parse `Artist - Track` from the title.
 
 ## Build
 
