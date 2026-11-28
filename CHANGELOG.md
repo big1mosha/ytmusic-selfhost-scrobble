@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/big1mosha/ytmusic-selfhost-scrobble/compare/v1.0.1...v1.1.0) (2026-11-28)
+
+### ✨ New Features
+
+* add an in-app settings screen for the server and token ([e843abc](https://github.com/big1mosha/ytmusic-selfhost-scrobble/commit/e843abc8165f56e94dd42356661890757da38b0d))
+
 ## [1.0.1](https://github.com/big1mosha/ytmusic-selfhost-scrobble/compare/v1.0.0...v1.0.1) (2026-11-28)
 
 ### 🐛 Bug Fixes
