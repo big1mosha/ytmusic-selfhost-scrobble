@@ -46,10 +46,10 @@ public final class Config {
     public static final int MIN_SONG_DURATION_SECONDS = 30;
 
     /** Scrobble after listening to this percentage of the track. */
-    public static final int DELAY_PERCENT = 50;
+    public static final int DELAY_PERCENT = 85;
 
     /** Never wait longer than this before scrobbling. */
-    public static final int DELAY_SECONDS = 180;
+    public static final int DELAY_SECONDS = 300;
 
     /** The same track is not scrobbled twice within this many seconds. */
     public static final int DEDUPE_SECONDS = 300;

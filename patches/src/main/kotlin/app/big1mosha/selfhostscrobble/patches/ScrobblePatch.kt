@@ -116,6 +116,10 @@ private fun addSettingsEntry() {
                 appendChild("action") {
                     setAttribute("android:name", SETTINGS_ACTION)
                 }
+                // Without the default category the preference cannot resolve the intent.
+                appendChild("category") {
+                    setAttribute("android:name", "android.intent.category.DEFAULT")
+                }
             }
         }
     }
@@ -124,6 +128,7 @@ private fun addSettingsEntry() {
     // works then, the settings can only be changed by editing scrobble.conf.
     resourceXmlOrNull(SETTINGS_ENTRY_FILE)?.use { xml ->
         xml.elements("PreferenceScreen").firstOrNull()?.appendChild("Preference") {
+            setAttribute("android:key", "selfhost_scrobble_settings")
             setAttribute("android:title", "Self-hosted scrobbling")
             setAttribute("android:summary", "Server and API token")
             appendChild("intent") {

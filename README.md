@@ -25,7 +25,7 @@ Works with any server that implements the ListenBrainz API:
 - Adds **Settings → Self-hosted scrobbling** to YouTube Music for the server URL and token.
 - Sends `playing_now` and `single` listens to `<your-server>/apis/listenbrainz/1/...`.
 - Cleans up metadata (`Official Video`, `Remaster`, `Live`, channel `- Topic`, …).
-- Waits until 50% of the track (max 180s) before scrobbling, and skips tracks shorter
+- Waits until 85% of the track (max 300s) before scrobbling, and skips tracks shorter
   than 30 seconds.
 - Keeps one snapshot per track, so the next song's album or art cannot land on the
   current scrobble, and ignores a repeat scrobble of the same track within 5 minutes.
