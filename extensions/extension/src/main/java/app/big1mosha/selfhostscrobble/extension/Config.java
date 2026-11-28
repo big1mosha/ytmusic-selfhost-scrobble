@@ -16,14 +16,10 @@ import java.util.Locale;
 /**
  * Configuration for the self-hosted scrobbler.
  *
- * <p>Values are read from, in order of priority:
- * <ol>
- *     <li>{@code <app external files dir>/scrobble.conf}, with {@code server=} and {@code token=} lines.</li>
- *     <li>The constants below.</li>
- * </ol>
+ * <p>Values are read from {@code <app external files dir>/scrobble.conf}, which the in-app
+ * settings screen writes. The constants below are the fallback when the file is missing.
  *
- * <p>The config file keeps the token out of this repository. Its path for YouTube Music is
- * {@code /sdcard/Android/data/com.google.android.apps.youtube.music/files/scrobble.conf}.
+ * <p>The config file keeps the token out of this repository.
  */
 public final class Config {
     private static final String TAG = "SelfHostScrobble";
@@ -44,7 +40,7 @@ public final class Config {
     public static final String DEFAULT_TOKEN = "";
 
     /** Send a "now playing" update when a track starts. */
-    public static final boolean NOW_PLAYING = true;
+    public static final boolean DEFAULT_NOW_PLAYING = true;
 
     /** Tracks shorter than this are never scrobbled. */
     public static final int MIN_SONG_DURATION_SECONDS = 30;
@@ -70,6 +66,7 @@ public final class Config {
     private static boolean loaded;
     private static String serverUrl = DEFAULT_SERVER_URL;
     private static String token = DEFAULT_TOKEN;
+    private static boolean nowPlaying = DEFAULT_NOW_PLAYING;
 
     private Config() {
     }
@@ -84,8 +81,32 @@ public final class Config {
         return token;
     }
 
+    public static boolean nowPlaying() {
+        load();
+        return nowPlaying;
+    }
+
     public static boolean isConfigured() {
         return !serverUrl().trim().isEmpty() && !token().trim().isEmpty();
+    }
+
+    /** The file the settings screen writes. */
+    static File configFile() {
+        Context context = getContext();
+        if (context == null) {
+            return null;
+        }
+
+        File directory = context.getExternalFilesDir(null);
+        return directory == null ? null : new File(directory, CONFIG_FILE_NAME);
+    }
+
+    /** Drops the cached values so the next read picks up changes from the settings screen. */
+    static synchronized void reload() {
+        loaded = false;
+        serverUrl = DEFAULT_SERVER_URL;
+        token = DEFAULT_TOKEN;
+        nowPlaying = DEFAULT_NOW_PLAYING;
     }
 
     private static synchronized void load() {
@@ -95,18 +116,8 @@ public final class Config {
         loaded = true;
 
         try {
-            Context context = getContext();
-            if (context == null) {
-                return;
-            }
-
-            File directory = context.getExternalFilesDir(null);
-            if (directory == null) {
-                return;
-            }
-
-            File file = new File(directory, CONFIG_FILE_NAME);
-            if (!file.isFile()) {
+            File file = configFile();
+            if (file == null || !file.isFile()) {
                 return;
             }
 
@@ -130,6 +141,8 @@ public final class Config {
                         serverUrl = value;
                     } else if (key.equals("token")) {
                         token = value;
+                    } else if (key.equals("now_playing")) {
+                        nowPlaying = !value.equalsIgnoreCase("false");
                     }
                 }
             }

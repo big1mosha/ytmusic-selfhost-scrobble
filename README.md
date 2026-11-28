@@ -22,6 +22,7 @@ Works with any server that implements the ListenBrainz API:
 ## What it does
 
 - Hooks the media session of YouTube Music (`setMetadata` and `setPlaybackState`).
+- Adds **Settings → Self-hosted scrobbling** to YouTube Music for the server URL and token.
 - Sends `playing_now` and `single` listens to `<your-server>/apis/listenbrainz/1/...`.
 - Cleans up metadata (`Official Video`, `Remaster`, `Live`, channel `- Topic`, …).
 - Waits until 50% of the track (max 180s) before scrobbling, and skips tracks shorter
@@ -31,24 +32,28 @@ Works with any server that implements the ListenBrainz API:
 - Allows plain `http://` traffic, because self-hosted servers are usually reached over
   LAN without TLS.
 
-There is no settings screen. Configuration lives in
-[`Config.java`](extensions/extension/src/main/java/app/big1mosha/selfhostscrobble/extension/Config.java)
-or in a small config file (see below).
+Configuration is done in the app, from the entry this patch adds to YouTube Music's settings
+(see below).
 
 ## Configuration
 
-The server URL and token can be set in two ways. The config file wins when it exists.
+Open **YouTube Music → Settings → Self-hosted scrobbling**, enter the server URL and the API
+token, tap **Test connection**, then **Save**. Changes apply immediately, no restart needed.
 
-### Option 1: config file (no rebuild needed)
+- Koito: `http://<host>:4110/apis/listenbrainz`
+- Maloja: `http://<host>:42010/apis/listenbrainz`
 
-Create `scrobble.conf` in the app's external files directory:
+The URL may also be given as `http://host:4110` or `http://host:4110/apis/listenbrainz/1`;
+it is normalized. The token is the API key from your server (Koito: **Settings → API Keys**).
+
+The screen writes `scrobble.conf` in the app's external files directory, so you can also
+edit that file directly:
 
 ```conf
 server=http://192.168.1.5:4110/apis/listenbrainz
 token=your-koito-api-key
+now_playing=true
 ```
-
-Push it with adb:
 
 ```sh
 adb shell mkdir -p /sdcard/Android/data/app.morphe.android.apps.youtube.music/files
@@ -56,24 +61,13 @@ adb push scrobble.conf /sdcard/Android/data/app.morphe.android.apps.youtube.musi
 ```
 
 Morphe renames the patched app to `app.morphe.android.apps.youtube.music`, so that is the
-directory to use, not `com.google.android.apps.youtube.music`. The extension resolves it from
-its own package automatically, so only the adb path above depends on the name.
+directory to use, not `com.google.android.apps.youtube.music`. Restart YouTube Music after
+editing the file by hand.
 
-For Maloja the URL is usually `http://<host>:42010/apis/listenbrainz`.
-The token is the API key from your server's settings page (Koito: **Settings → API Keys**).
+If the settings entry does not appear on your build, use the file: the patch adds the entry
+to YouTube Music's settings list and skips it when that list is not present.
 
-The URL may be given as `http://host:4110`, `http://host:4110/apis/listenbrainz`, or
-`http://host:4110/apis/listenbrainz/1`; the patch normalizes it.
-
-Restart YouTube Music after changing the file.
-
-### Option 2: hardcoded constants
-
-Edit `DEFAULT_SERVER_URL` and `DEFAULT_TOKEN` in `Config.java` and rebuild.
-
-> Do not commit a real token to a public repository.
-
-Other toggles in `Config.java`: now playing, minimum duration, delay percent/seconds,
+Other toggles are constants in `Config.java`: minimum duration, delay percent/seconds,
 duplicate window, metadata cleanup, custom regex, parse `Artist - Track` from the title.
 
 ## Build

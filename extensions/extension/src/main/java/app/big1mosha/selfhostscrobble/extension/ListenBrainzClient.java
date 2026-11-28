@@ -44,7 +44,11 @@ final class ListenBrainzClient {
      * {@code .../apis/listenbrainz/1}, or a full endpoint URL.
      */
     private static String apiBase() {
-        String url = Config.serverUrl().trim();
+        return apiBase(Config.serverUrl());
+    }
+
+    private static String apiBase(String server) {
+        String url = server == null ? "" : server.trim();
         if (url.isEmpty()) {
             return null;
         }
@@ -118,6 +122,67 @@ final class ListenBrainzClient {
 
     static void nowPlaying(String artist, String track, String album, String songId, int duration) {
         EXECUTOR.submit(() -> submitNowPlaying(artist, track, album, songId, duration));
+    }
+
+    /** Result of a token check, called on a background thread. */
+    interface ResultCallback {
+        void onResult(boolean ok, String message);
+    }
+
+    /** Checks the token against the server without touching the configured values. */
+    static void validateToken(String server, String token, ResultCallback callback) {
+        EXECUTOR.submit(() -> {
+            boolean ok = false;
+            String message;
+            try {
+                message = requestValidation(server, token);
+                ok = message.startsWith("Token valid");
+            } catch (Throwable t) {
+                message = t.getClass().getSimpleName() + ": " + t.getMessage();
+            }
+            callback.onResult(ok, message);
+        });
+    }
+
+    private static String requestValidation(String server, String token) throws Exception {
+        String base = apiBase(server);
+        if (base == null) {
+            return "Server URL is empty";
+        }
+
+        String url = base + "/validate-token";
+        Log.d(TAG, "GET " + url);
+
+        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+        try {
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("User-Agent", USER_AGENT);
+            connection.setRequestProperty("Authorization", "Token " + token);
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
+
+            int code = connection.getResponseCode();
+            String body = readStream(
+                    code >= 400 ? connection.getErrorStream() : connection.getInputStream()
+            );
+
+            if (code < 200 || code >= 300) {
+                return "HTTP " + code + " (" + body + ")";
+            }
+
+            try {
+                JSONObject json = new JSONObject(body);
+                if (json.has("valid") && !json.optBoolean("valid", false)) {
+                    return "Invalid token";
+                }
+                String user = json.optString("user_name", "").trim();
+                return user.isEmpty() ? "Token valid" : "Token valid (user: " + user + ")";
+            } catch (Exception ignored) {
+                return "Token valid";
+            }
+        } finally {
+            connection.disconnect();
+        }
     }
 
     private static void submitNowPlaying(String artist, String track, String album, String songId,
@@ -207,9 +272,13 @@ final class ListenBrainzClient {
     }
 
     private static String readError(HttpURLConnection connection) {
-        java.io.InputStream stream = connection.getErrorStream();
+        String body = readStream(connection.getErrorStream());
+        return body.isEmpty() ? "empty body" : body;
+    }
+
+    private static String readStream(java.io.InputStream stream) {
         if (stream == null) {
-            return "no body";
+            return "";
         }
 
         try (java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream()) {
@@ -218,10 +287,9 @@ final class ListenBrainzClient {
             while ((read = stream.read(chunk)) != -1) {
                 buffer.write(chunk, 0, read);
             }
-            String body = buffer.toString(StandardCharsets.UTF_8.name());
-            return body.isEmpty() ? "empty body" : body;
+            return buffer.toString(StandardCharsets.UTF_8.name());
         } catch (Throwable t) {
-            return "unreadable body";
+            return "";
         }
     }
 }

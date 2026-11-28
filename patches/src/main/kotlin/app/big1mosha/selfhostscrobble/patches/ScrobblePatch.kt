@@ -25,6 +25,11 @@ private const val EXTENSION_CLASS =
 private const val NETWORK_SECURITY_CONFIG_ATTRIBUTE = "android:networkSecurityConfig"
 private const val CLEARTEXT_CONFIG_FILE = "morphe_cleartext"
 
+private const val SETTINGS_ACTION = "app.big1mosha.selfhostscrobble.SETTINGS"
+private const val SETTINGS_ACTIVITY =
+    "app.big1mosha.selfhostscrobble.extension.SettingsActivity"
+private const val SETTINGS_ENTRY_FILE = "res/xml/settings_headers.xml"
+
 /** Finds the method that hands track metadata to the media session. */
 private object MediaSessionSetMetadataFingerprint : Fingerprint(
     filters = listOf(
@@ -92,6 +97,39 @@ val selfHostScrobblePatch = patch(
         // Self-hosted servers are usually reached over plain http on the local network,
         // which Android blocks by default.
         enableCleartextTraffic()
+
+        addSettingsEntry()
+    }
+}
+
+/**
+ * Adds the settings screen to YouTube Music's own settings list.
+ */
+private fun addSettingsEntry() {
+    resourceXml("AndroidManifest.xml").use { manifest ->
+        manifest.elements("application").first().appendChild("activity") {
+            setAttribute("android:name", SETTINGS_ACTIVITY)
+            setAttribute("android:exported", "false")
+            setAttribute("android:label", "Self-hosted scrobbling")
+            setAttribute("android:theme", "@android:style/Theme.DeviceDefault")
+            appendChild("intent-filter") {
+                appendChild("action") {
+                    setAttribute("android:name", SETTINGS_ACTION)
+                }
+            }
+        }
+    }
+
+    // Some builds do not have the settings list this entry goes into. Scrobbling still
+    // works then, the settings can only be changed by editing scrobble.conf.
+    resourceXmlOrNull(SETTINGS_ENTRY_FILE)?.use { xml ->
+        xml.elements("PreferenceScreen").firstOrNull()?.appendChild("Preference") {
+            setAttribute("android:title", "Self-hosted scrobbling")
+            setAttribute("android:summary", "Server and API token")
+            appendChild("intent") {
+                setAttribute("android:action", SETTINGS_ACTION)
+            }
+        }
     }
 }
 

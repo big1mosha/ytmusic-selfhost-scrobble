@@ -143,7 +143,7 @@ final class ScrobbleManager {
                 if (!scrobbled && scrobbleRunnable == null && scrobbleTimerStartedAt == 0L) {
                     startTimer();
                 }
-                if (Config.NOW_PLAYING) {
+                if (Config.nowPlaying()) {
                     nowPlaying();
                 }
             }
@@ -184,7 +184,7 @@ final class ScrobbleManager {
 
         startTimer();
 
-        if (Config.NOW_PLAYING) {
+        if (Config.nowPlaying()) {
             nowPlaying();
         }
     }
